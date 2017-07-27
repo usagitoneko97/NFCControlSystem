@@ -37,9 +37,13 @@
 /* Exported types ------------------------------------------------------------*/
 /* Exported constants --------------------------------------------------------*/
 /* Exported macro ------------------------------------------------------------*/
+
+#define PushButton_Pin GPIO_PIN_13
+#define PushButton_GPIO_Port GPIOC
 #ifndef __MBED__
 	#define wait_ms( time ) HAL_Delay(time)
 #endif
+
 /* External variables --------------------------------------------------------*/
 extern NFCTAG_ExtDrvTypeDef *Nfctag_ExtDrv;
 

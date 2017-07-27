@@ -54,7 +54,20 @@ uint8_t LED2_value;
 uint8_t LED_Green_value;
 uint8_t LED_Blue_value;
 uint8_t LED_Orange_value;
+uint8_t password[2];
 
+uint8_t tempBuffer = 0x52;
+uint8_t dataRead[3] = {0};
+uint8_t NEED_WIFI = 0x2;
+uint8_t WIFI_DATA = 0x3;
+uint8_t* Wifissid;
+uint8_t* WifiPw;
+uint8_t data[2];
+const uint8_t ANDROID_THERE = 0x1f;
+const uint8_t NEED = 1;
+const uint8_t XNEED = 0;
+
+SPI_HandleTypeDef hspi1;
 /* Global variables ----------------------------------------------------------*/
 sURI_Info URI;
 sURI_Info URI1;
@@ -65,9 +78,19 @@ extern sCCFileInfo CCFileStruct;
 
 /* Private function prototypes -----------------------------------------------*/
 extern void SystemClock_Config( void );
-
+static void MX_GPIO_Init(void);
+static void MX_SPI1_Init(void);
 void Enable_EnergyHarvesting( void );
 void Disable_EnergyHarvesting( void );
+
+uint8_t readAndroidThereNFC();
+void needWifiSPI();
+uint8_t* receiveWifiSSID();
+uint8_t* receiveWifiPw();
+void WriteSsidToEEPROM(uint8_t* Ssid);
+void WritePwToEEPROM(uint8_t* Pw);
+void WriteAndroidConfirmationToEEPROM();
+int isAndroidThere();
 /* Private functions ---------------------------------------------------------*/
 
 /**
@@ -93,10 +116,15 @@ int main( void )
   HAL_Init();
   /* Configure the system clock */
   SystemClock_Config();
-  /* Init of the Nucleo Board led */
   BSP_LED_Init(LED2);
+  /* Init M24LR driver */
+  while( BSP_NFCTAG_Init( ) != NFCTAG_OK );
+
   //init gipo pin as output
   MX_GPIO_Init();
+  MX_SPI1_Init();
+  /* Init of the Nucleo Board led */
+
 
   /******************************************************************************/
   /* Configuration of X-NUCLEO-NFC02A1                                          */
@@ -115,11 +143,10 @@ int main( void )
   wait_ms( 500 );
   NFC02A1_LED_OFF( ORANGE_LED );
 
-  /* Init M24LR driver */
-  while( BSP_NFCTAG_Init( ) != NFCTAG_OK );
+
 
   /* Enable Energy Harvesting */
-  Enable_EnergyHarvesting( );
+  Enable_EnergyHarvesting();
   //Disable_EnergyHarvesting();
   /* Check if no NDEF detected, init mem in Tag Type 5 */
   if( NfcType5_NDEFDetection( ) != NDEF_OK )
@@ -128,82 +155,37 @@ int main( void )
       CCFileStruct.Version = NFCT5_VERSION_V1_0;
       CCFileStruct.MemorySize = ( M24LR_MAX_SIZE / 8 ) & 0xFF;
       CCFileStruct.TT5Tag = 0x05;
-      /* Init of the Type Tag 5 component (M24LR) */
+       /*Init of the Type Tag 5 component (M24LR)*/
       while( NfcType5_TT5Init( ) != NFCTAG_OK );
     }
   /* Set the LED2 on to indicate Init done */
   NFC02A1_LED_ON( BLUE_LED );
 
+  /*zeros out 17 bytes of the eeprom*/
+   /* while(BSP_NFCTAG_WriteData((Buffer_bin), (0), 17)!=NDEF_OK);
+    password[0] = 0x12;
+    password[1] = 0x34;*/
 
-  strcpy(sAAR.PakageName, "com.usagitoneko.nekof");
+    while( 1 )
+    {
+    	while(__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET);
+    		  	  		HAL_SPI_Receive(&hspi1, &tempBuffer, 1, 5000);
+    		  	  		if(tempBuffer == NEED_WIFI){
+    		  	  			if(isAndroidThere()==0){
+    		  	  				needWifiSPI();
+    		  	  			}
+    		  	  			else{
+    		  	  				xneedWifiSPI();
+    		  	  			}
+    		  	  		}
+    		  	  		else if(tempBuffer == WIFI_DATA){
+    		  	  			Wifissid = receiveWifiSSID();
+    		  	  			WifiPw = receiveWifiPw();
+    		  	  			volatile int i = 0;
+    		  	  			i++;
+    		  	  		}
 
-  /* Prepare URI NDEF message content */
-  strcpy( URI.protocol,URI_ID_0x01_STRING );
-  strcpy( URI.URI_Message,"google.com" );
-  strcpy( URI.Information,"\0" );
-  /* Write NDEF to EEPROM */
-  //while( NDEF_WriteURI( &URI ) != NDEF_OK );
-
-  //NDEF write text file
-  char text_file[12] = {"goodbye!!!!"};
-  //while(NDEF_WriteText(&text_file)!=NDEF_OK);
-  /* Set the LED3 on to indicate Programming done */
-
-
-  Buffer_bin[1] = 0x11;
-  Buffer_bin[2] = 0x51;
-  Buffer_bin[3] = 0x62;
-  Buffer_bin[4] = 0x29;
-  Buffer_bin[5] = 0x51;
-  Buffer_bin[6] = 0x62;
-  Buffer_bin[7] = 0x29;
-  Buffer_bin[8] = 0x51;
-  Buffer_bin[9] = 0x62;
-  Buffer_bin[10] = 0x62;
-  //HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
-  while(BSP_NFCTAG_WriteData((Buffer_bin+1), (0), 1)!=NDEF_OK);
-  //NDEF_AddAAR(sAAR);
-  //HAL_Delay(500);
- //while(NDEF_ReadNDEF(NDEF_BUFFER1) != NDEF_OK );
-   //NFC02A1_LED_OFF( BLUE_LED );
-
-  while( 1 )
-  {
-	 //NDEF_ReadNDEF(NDEF_BUFFER1);
-	 BSP_NFCTAG_ReadData(NDEF_BUFFER1, 0, 4);	//read all the data
-	 //NFC02A1_LED_Toggle( ORANGE_LED );
-	 //take the 1st bit
-	 LED2_value = NDEF_BUFFER1[0]&0x01;
-	 LED_Green_value = (NDEF_BUFFER1[0] &0x02)>>1;
-	 LED_Blue_value = (NDEF_BUFFER1[0] &0x04)>>2;
-	 LED_Orange_value = (NDEF_BUFFER1[0] &0x08)>>3;
-	 if(LED2_value ==1){
-		 HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
-	 }
-	 else {
-		 HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
-	 }
-	 if(LED_Green_value==1){
-		 NFC02A1_LED_ON( GREEN_LED );
-	 }
-	 else{
-		 NFC02A1_LED_OFF( GREEN_LED );
-	 }
-	 if(LED_Blue_value==1){
-		 NFC02A1_LED_ON( BLUE_LED );
-	 }
-	 else{
-		 NFC02A1_LED_OFF( BLUE_LED );
-	 }
-	 if(LED_Orange_value==1){
-		 NFC02A1_LED_ON( ORANGE_LED );
-	 }
-	 else{
-		 NFC02A1_LED_OFF( ORANGE_LED );
-	 }
-	 HAL_Delay(500);
-
-  }
+    }
 }
 //
 
@@ -214,6 +196,76 @@ int main( void )
 /**
   * @brief  This function activate Energy Harvesting mode
   */
+
+
+uint8_t readAndroidThereNFC(){
+	return 0xf;
+}
+
+int isAndroidThere(){
+	/*using push button to stimulate the response*/
+	return (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
+
+	//poll for AndroidThere flag
+	//clear the changing flag
+	//copy ssid and pw to eeprom
+	//set WriteCPLT flag
+
+
+}
+void needWifiSPI(){
+	HAL_SPI_Transmit(&hspi1, &NEED, 1, 500);
+}
+void xneedWifiSPI(){
+	HAL_SPI_Transmit(&hspi1, &XNEED, 1, 500);
+}
+uint8_t* receiveWifiSSID(){
+	static uint8_t Wifissid [8] = {0};
+	int i;
+	for(i = 0;i<8;i++){
+		while(__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET);
+		HAL_SPI_Receive(&hspi1, Wifissid+i, 1, 5000);
+	}
+	return Wifissid;
+}
+uint8_t* receiveWifiPw(){
+	static uint8_t WifiPw[8] = {0};
+	int i;
+	for(i = 0;i<8;i++){
+		while(__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET);
+		HAL_SPI_Receive(&hspi1, WifiPw+i, 1, 5000);
+	}
+	volatile int j =0;
+	j++;
+	return WifiPw;
+}
+void WriteSsidToEEPROM(uint8_t* Ssid){
+}
+void WritePwToEEPROM(uint8_t* Pw){
+}
+void WriteAndroidConfirmationToEEPROM(){
+}
+
+static void MX_SPI1_Init(void)
+{
+
+  hspi1.Instance = SPI1;
+  hspi1.Init.Mode = SPI_MODE_SLAVE;
+  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi1.Init.CRCPolynomial = 7;
+  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+}
 void Enable_EnergyHarvesting( void )
 {
   /* Initialise M24LR Board */
@@ -243,25 +295,34 @@ void Disable_EnergyHarvesting( void )
   }
 }
 
- void MX_GPIO_Init(void)
+ /*static void MX_GPIO_Init(void)
 {
 
-  GPIO_InitTypeDef GPIO_InitStruct;
+ // GPIO_InitTypeDef GPIO_InitStruct;
 
-  /* GPIO Ports Clock Enable */
+  /* GPIO Ports Clock Enable
+
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : LED_Pin */
-  GPIO_InitStruct.Pin = LED_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
+}*/
 
-}
+ static void MX_GPIO_Init(void)
+ {
+
+   GPIO_InitTypeDef GPIO_InitStruct;
+
+    /*GPIO Ports Clock Enable*/
+   __HAL_RCC_GPIOC_CLK_ENABLE();
+   __HAL_RCC_GPIOA_CLK_ENABLE();
+
+   /*Configure GPIO pin : PushButton_Pin*/
+   GPIO_InitStruct.Pin = PushButton_Pin;
+   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+   GPIO_InitStruct.Pull = GPIO_NOPULL;
+   HAL_GPIO_Init(PushButton_GPIO_Port, &GPIO_InitStruct);
+
+ }
 
 #ifdef  USE_FULL_ASSERT
 
