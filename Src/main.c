@@ -67,6 +67,7 @@ const uint8_t ANDROID_THERE = 0x1f;
 const uint8_t NEED = 1;
 const uint8_t XNEED = 0;
 
+uint8_t tempFlag;
 SPI_HandleTypeDef hspi1;
 /* Global variables ----------------------------------------------------------*/
 sURI_Info URI;
@@ -161,29 +162,37 @@ int main( void )
   /* Set the LED2 on to indicate Init done */
   NFC02A1_LED_ON( BLUE_LED );
 
-  /*zeros out 17 bytes of the eeprom*/
-   /* while(BSP_NFCTAG_WriteData((Buffer_bin), (0), 17)!=NDEF_OK);
-    password[0] = 0x12;
-    password[1] = 0x34;*/
+  /*MOCK*/
+  Buffer_bin[0] = 0x01;	//set the ANDROID_PRESENT bit
+  while(BSP_NFCTAG_WriteData((Buffer_bin), (0), 1)!=NDEF_OK);
 
-    while( 1 )
-    {
-    	while(__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET);
-    		  	  		HAL_SPI_Receive(&hspi1, &tempBuffer, 1, 5000);
-    		  	  		if(tempBuffer == NEED_WIFI){
-    		  	  			if(isAndroidThere()==0){
-    		  	  				needWifiSPI();
-    		  	  			}
-    		  	  			else{
-    		  	  				xneedWifiSPI();
-    		  	  			}
-    		  	  		}
-    		  	  		else if(tempBuffer == WIFI_DATA){
-    		  	  			Wifissid = receiveWifiSSID();
-    		  	  			WifiPw = receiveWifiPw();
-    		  	  			volatile int i = 0;
-    		  	  			i++;
-    		  	  		}
+  while( 1 )
+  {
+	  while(__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET);
+	  HAL_SPI_Receive(&hspi1, &tempBuffer, 1, 5000);
+	  if(tempBuffer == NEED_WIFI){
+		  if(isAndroidThere()==1){
+			  needWifiSPI();
+    		}
+		  else{
+			  xneedWifiSPI();
+		  }
+	  }
+	  else if(tempBuffer == WIFI_DATA){
+		  Wifissid = receiveWifiSSID();
+		  WifiPw = receiveWifiPw();
+		  //write ssid and pw
+		  //set wrcplt flag
+		  BSP_NFCTAG_WriteData(Wifissid, SSID_8_BUFFER_POS, 8);
+		  BSP_NFCTAG_WriteData(WifiPw, PW_8_BUFFER_POS, 8);
+		  BSP_NFCTAG_ReadData(NDEF_BUFFER1, 0, 1);
+		  tempFlag = NDEF_BUFFER1[0] | ANDROID_WRCPLT;	//set wrcplt bit
+		  BSP_NFCTAG_WriteData(&tempFlag, 0, 1);
+		  /*checking purpose*/
+		  BSP_NFCTAG_ReadData(NDEF_BUFFER1, 0, 1);
+		  volatile int i = 0;
+		  i++;
+	  }
 
     }
 }
@@ -204,13 +213,18 @@ uint8_t readAndroidThereNFC(){
 
 int isAndroidThere(){
 	/*using push button to stimulate the response*/
-	return (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
+	//return (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
 
 	//poll for AndroidThere flag
 	//clear the changing flag
 	//copy ssid and pw to eeprom
 	//set WriteCPLT flag
-
+	BSP_NFCTAG_ReadData(NDEF_BUFFER1, 0, 1 );
+	if((NDEF_BUFFER1[0] & ANDROID_PRESENT) > 0){
+		//BIT IS SET
+		return 1;
+	}
+	return 0;
 
 }
 void needWifiSPI(){

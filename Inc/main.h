@@ -44,6 +44,19 @@
 	#define wait_ms( time ) HAL_Delay(time)
 #endif
 
+
+/********************  Bit definition for NFC communication register  ********************/
+#define ANDROID_PRESENT_POS	(0U)
+#define ANDROID_PRESENT_MSK	(1U << ANDROID_PRESENT_POS)
+#define ANDROID_PRESENT		ANDROID_PRESENT_MSK
+
+#define ANDROID_WRCPLT_POS	(1U)
+#define ANDROID_WRCPLT_MSK	(1U << ANDROID_WRCPLT_POS)
+#define ANDROID_WRCPLT		ANDROID_WRCPLT_MSK
+
+/********************  Byte Location for data storage  ********************/
+#define SSID_8_BUFFER_POS	1
+#define PW_8_BUFFER_POS		9
 /* External variables --------------------------------------------------------*/
 extern NFCTAG_ExtDrvTypeDef *Nfctag_ExtDrv;
 
