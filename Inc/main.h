@@ -57,6 +57,12 @@
 /********************  Byte Location for data storage  ********************/
 #define SSID_8_BUFFER_POS	1
 #define PW_8_BUFFER_POS		9
+
+#define IDLE			0
+#define READ_WIFI_SPI	1
+
+#define CHECK_ANDROID_THERE	0
+#define WRITE_WIFI_EEPROM	1
 /* External variables --------------------------------------------------------*/
 extern NFCTAG_ExtDrvTypeDef *Nfctag_ExtDrv;
 
