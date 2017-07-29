@@ -66,9 +66,13 @@ uint8_t data[2];
 const uint8_t ANDROID_THERE = 0x1f;
 const uint8_t NEED = 1;
 const uint8_t XNEED = 0;
+const uint8_t INVALID = -1;
 
 uint8_t tempFlag;
 SPI_HandleTypeDef hspi1;
+
+int espComState = 0;
+int androidComState = 0;
 /* Global variables ----------------------------------------------------------*/
 sURI_Info URI;
 sURI_Info URI1;
@@ -76,6 +80,10 @@ sURI_Info URI1;
 I2C_HandleTypeDef hNFC02A1_i2c;
 
 extern sCCFileInfo CCFileStruct;
+
+int androidNeedSSIDPW = 0;
+int ReadWifiFromSpiComplete = 0;
+
 
 /* Private function prototypes -----------------------------------------------*/
 extern void SystemClock_Config( void );
@@ -167,38 +175,13 @@ int main( void )
   Buffer_bin[1] = 0;
   Buffer_bin[6] = 0;
 
-  while(BSP_NFCTAG_WriteData((Buffer_bin), (0), 9)!=NDEF_OK);	//clear everything
-  BSP_NFCTAG_ReadData(NDEF_BUFFER1, 0, 8);
+  //while(BSP_NFCTAG_WriteData((Buffer_bin), (0), 9)!=NDEF_OK);	//clear everything
+  //BSP_NFCTAG_ReadData(NDEF_BUFFER1, 0, 8);
   while( 1 )
   {
-	  while(__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET);
-	  HAL_SPI_Receive(&hspi1, &tempBuffer, 1, 5000);
-	  if(tempBuffer == NEED_WIFI){
-		  if(isAndroidThere()==1){
-			  needWifiSPI();
-    		}
-		  else{
-			  xneedWifiSPI();
-		  }
-	  }
-	  else if(tempBuffer == WIFI_DATA){
-		  Wifissid = receiveWifiSSID();
-		  WifiPw = receiveWifiPw();
-		  //write ssid and pw
-		  //set wrcplt flag
-		  BSP_NFCTAG_WriteData(Wifissid, SSID_8_BUFFER_POS, 8);
-		  //BSP_NFCTAG_WriteData(WifiPw, PW_8_BUFFER_POS, 8);
-		  //BSP_NFCTAG_ReadData(NDEF_BUFFER1, 0, 1);
-		  //tempFlag = NDEF_BUFFER1[0] | ANDROID_WRCPLT;	//set wrcplt bit
-		  tempFlag = 3;
-		  while(BSP_NFCTAG_WriteData((&tempFlag), (6), 1)!=NDEF_OK);
-		  /*checking purpose*/
-		  BSP_NFCTAG_ReadData(NDEF_BUFFER1, 0, 8);
-		  volatile int i = 0;
-		  i++;
-	  }
-
-    }
+	 espComm();
+	 androidComm();
+  }
 }
 //
 
@@ -211,13 +194,74 @@ int main( void )
   */
 
 
+void espComm(){
+	switch(espComState){
+		case IDLE:
+			while((tempBuffer== 0xff ) || (tempBuffer == 0x52)){
+				while(__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET);
+				HAL_SPI_Receive(&hspi1, &tempBuffer, 1, 5000);
+			}
+			volatile int h;
+			h++;
+			if(tempBuffer == NEED_WIFI && androidNeedSSIDPW == 1){
+				androidNeedSSIDPW = 0;
+				needWifiSPI();
+				espComState = READ_WIFI_SPI;
+			}
+			else if(tempBuffer == NEED_WIFI && androidNeedSSIDPW == 0){
+				xneedWifiSPI();
+			}
+			else{
+				unknownCommandSPI();
+			}
+			break;
+		case READ_WIFI_SPI:
+			Wifissid = receiveWifiSSID();
+			WifiPw = receiveWifiPw();
+			ReadWifiFromSpiComplete = 1;
+			espComState = IDLE;
+			volatile int i = 0;
+			i++;
+			break;
+	}
+}
+
+void androidComm(){
+	switch(androidComState){
+	case CHECK_ANDROID_THERE:
+		if(isAndroidThere() == 0){
+			androidNeedSSIDPW = 1;
+			androidComState = WRITE_WIFI_EEPROM;
+		}
+		else{
+			androidNeedSSIDPW = 0;
+		}
+		break;
+	case WRITE_WIFI_EEPROM:
+		if(ReadWifiFromSpiComplete){
+			ReadWifiFromSpiComplete = 0;
+			volatile int i;
+			i++;
+			//BSP_NFCTAG_WriteData(Wifissid, SSID_8_BUFFER_POS, 8);
+			//BSP_NFCTAG_WriteData(WifiPw, PW_8_BUFFER_POS, 8);
+			//BSP_NFCTAG_ReadData(NDEF_BUFFER1, 0, 1);
+			//tempFlag = NDEF_BUFFER1[0] | ANDROID_WRCPLT;	//set wrcplt bit
+			tempFlag = 3;
+			//while(BSP_NFCTAG_WriteData((&tempFlag), (6), 1)!=NDEF_OK);
+		}
+		androidComState = CHECK_ANDROID_THERE;
+		break;
+	}
+
+}
+
 uint8_t readAndroidThereNFC(){
 	return 0xf;
 }
 
 int isAndroidThere(){
 	/*using push button to stimulate the response*/
-	//return (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
+	return (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
 
 	//poll for AndroidThere flag
 	//clear the changing flag
@@ -236,6 +280,9 @@ void needWifiSPI(){
 }
 void xneedWifiSPI(){
 	HAL_SPI_Transmit(&hspi1, &XNEED, 1, 500);
+}
+void unknownCommandSPI(){
+	HAL_SPI_Transmit(&hspi1, &INVALID, 1, 500);
 }
 uint8_t* receiveWifiSSID(){
 	static uint8_t Wifissid [8] = {0};
