@@ -163,9 +163,10 @@ int main( void )
   NFC02A1_LED_ON( BLUE_LED );
 
   /*MOCK*/
-  Buffer_bin[0] = 0x01;	//set the ANDROID_PRESENT bit
-  while(BSP_NFCTAG_WriteData((Buffer_bin), (0), 1)!=NDEF_OK);
-
+  Buffer_bin[0] = 0x0;	//set the ANDROID_PRESENT bit
+  Buffer_bin[1] = 0;
+  while(BSP_NFCTAG_WriteData((Buffer_bin), (0), 2)!=NDEF_OK);	//clear everything
+  BSP_NFCTAG_WriteData((Buffer_bin), (6), 0);
   while( 1 )
   {
 	  while(__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET);
@@ -183,13 +184,14 @@ int main( void )
 		  WifiPw = receiveWifiPw();
 		  //write ssid and pw
 		  //set wrcplt flag
-		  BSP_NFCTAG_WriteData(Wifissid, SSID_8_BUFFER_POS, 8);
-		  BSP_NFCTAG_WriteData(WifiPw, PW_8_BUFFER_POS, 8);
+		  //BSP_NFCTAG_WriteData(Wifissid, SSID_8_BUFFER_POS, 8);
+		  //BSP_NFCTAG_WriteData(WifiPw, PW_8_BUFFER_POS, 8);
 		  BSP_NFCTAG_ReadData(NDEF_BUFFER1, 0, 1);
-		  tempFlag = NDEF_BUFFER1[0] | ANDROID_WRCPLT;	//set wrcplt bit
-		  BSP_NFCTAG_WriteData(&tempFlag, 0, 1);
+		  //tempFlag = NDEF_BUFFER1[0] | ANDROID_WRCPLT;	//set wrcplt bit
+		  tempFlag = 3;
+		  BSP_NFCTAG_WriteData(&tempFlag, 6, 1);
 		  /*checking purpose*/
-		  BSP_NFCTAG_ReadData(NDEF_BUFFER1, 0, 1);
+		  BSP_NFCTAG_ReadData(NDEF_BUFFER1, 0, 8);
 		  volatile int i = 0;
 		  i++;
 	  }
