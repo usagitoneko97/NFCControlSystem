@@ -175,10 +175,13 @@ int main( void )
   Buffer_bin[1] = 0;
   Buffer_bin[6] = 0;
 
-  //while(BSP_NFCTAG_WriteData((Buffer_bin), (0), 9)!=NDEF_OK);	//clear everything
+  //while(BSP_NFCTAG_WriteData((Buffer_bin), (0), 7)!=NDEF_OK);	//clear everything
   //BSP_NFCTAG_ReadData(NDEF_BUFFER1, 0, 8);
+  ReadWifiFromSpiComplete = 0;
+  	  androidNeedSSIDPW = 0;
   while( 1 )
   {
+
 	 espComm();
 	 androidComm();
   }
@@ -238,18 +241,20 @@ void androidComm(){
 		}
 		break;
 	case WRITE_WIFI_EEPROM:
-		if(ReadWifiFromSpiComplete){
-			ReadWifiFromSpiComplete = 0;
+		if(ReadWifiFromSpiComplete == 1){
 			volatile int i;
 			i++;
+			ReadWifiFromSpiComplete = 0;
+
 			//BSP_NFCTAG_WriteData(Wifissid, SSID_8_BUFFER_POS, 8);
 			//BSP_NFCTAG_WriteData(WifiPw, PW_8_BUFFER_POS, 8);
 			//BSP_NFCTAG_ReadData(NDEF_BUFFER1, 0, 1);
 			//tempFlag = NDEF_BUFFER1[0] | ANDROID_WRCPLT;	//set wrcplt bit
 			tempFlag = 3;
 			//while(BSP_NFCTAG_WriteData((&tempFlag), (6), 1)!=NDEF_OK);
+			androidComState = CHECK_ANDROID_THERE;
 		}
-		androidComState = CHECK_ANDROID_THERE;
+
 		break;
 	}
 
