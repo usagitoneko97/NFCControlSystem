@@ -37,13 +37,14 @@
 /* Exported types ------------------------------------------------------------*/
 /* Exported constants --------------------------------------------------------*/
 /* Exported macro ------------------------------------------------------------*/
-
-#define PushButton_Pin GPIO_PIN_13
-#define PushButton_GPIO_Port GPIOC
 #ifndef __MBED__
 	#define wait_ms( time ) HAL_Delay(time)
 #endif
+/* External variables --------------------------------------------------------*/
+extern NFCTAG_ExtDrvTypeDef *Nfctag_ExtDrv;
 
+#define PushButton_Pin GPIO_PIN_13
+#define PushButton_GPIO_Port GPIOC
 
 /********************  Bit definition for NFC communication register  ********************/
 #define ANDROID_PRESENT_POS	(0U)
@@ -58,13 +59,27 @@
 #define SSID_8_BUFFER_POS	1
 #define PW_8_BUFFER_POS		9
 
-#define IDLE			0
+#define IDLE	0
 #define READ_WIFI_SPI	1
 
 #define CHECK_ANDROID_THERE	0
 #define WRITE_WIFI_EEPROM	1
-/* External variables --------------------------------------------------------*/
-extern NFCTAG_ExtDrvTypeDef *Nfctag_ExtDrv;
+
+/********************  ssidPassStatus value definition  ********************/
+#define SSID_STATUS_IDLE	0
+#define REQUEST_SSID_PASS	1
+#define SSID_PASS_AVAILABLE	2
+
+/********************  EEPROM flag definition  ********************/
+#define SSIDPASS_NOT_PRESENT	0
+#define SSIDPASS_PRESENT		1
+#define ANDROID_REQUESTING		2
+
+/******************** data Struct  ********************/
+struct SsidPassword{
+	uint8_t* Wifissid, *WifiPw
+};
+typedef struct SsidPassword SsidPassword;
 
 /* Exported functions ------------------------------------------------------- */
 
