@@ -38,51 +38,40 @@
   */
 
 /* Private typedef -----------------------------------------------------------*/
-typedef struct
-{
-  char PakageName[80];
-}sAARInfo;
-sAARInfo sAAR;
+
 /* Private define ------------------------------------------------------------*/
 #define LED_Pin GPIO_PIN_5
 #define LED_GPIO_Port GPIOA
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
 uint8_t NDEF_BUFFER1[NDEF_MAX_SIZE];
-uint8_t Buffer_bin[NDEF_MAX_SIZE];
-uint8_t LED2_value;
-uint8_t LED_Green_value;
-uint8_t LED_Blue_value;
-uint8_t LED_Orange_value;
-uint8_t password[2];
 
-uint8_t tempBuffer = 0x52;
-uint8_t dataRead[3] = {0};
+uint8_t espCommand = 0;
+
 uint8_t NEED_WIFI = 0x2;
 uint8_t WIFI_DATA = 0x3;
 uint8_t* Wifissid;
 uint8_t* WifiPw;
-uint8_t data[2];
-const uint8_t ANDROID_THERE = 0x1f;
-const uint8_t NEED = 1;
-const uint8_t XNEED = 0;
-const uint8_t INVALID = -1;
+uint8_t NEED = 1;
+uint8_t XNEED = 0;
+uint8_t INVALID = -1;
 
-uint8_t tempFlag;
 SPI_HandleTypeDef hspi1;
 
 int espComState = 0;
 int androidComState = 0;
+
+
+SsidPassword ssidPass;
+uint8_t androidFlag;
+uint8_t ssidPassStatus = SSID_STATUS_IDLE;
+
 /* Global variables ----------------------------------------------------------*/
 sURI_Info URI;
 sURI_Info URI1;
 /* I2C handler declaration */
 I2C_HandleTypeDef hNFC02A1_i2c;
 
-extern sCCFileInfo CCFileStruct;
-
-int androidNeedSSIDPW = 0;
-int ReadWifiFromSpiComplete = 0;
 
 
 /* Private function prototypes -----------------------------------------------*/
@@ -92,14 +81,17 @@ static void MX_SPI1_Init(void);
 void Enable_EnergyHarvesting( void );
 void Disable_EnergyHarvesting( void );
 
-uint8_t readAndroidThereNFC();
 void needWifiSPI();
+void xneedWifiSPI();
+void unknownCommandSPI();
 uint8_t* receiveWifiSSID();
 uint8_t* receiveWifiPw();
-void WriteSsidToEEPROM(uint8_t* Ssid);
-void WritePwToEEPROM(uint8_t* Pw);
-void WriteAndroidConfirmationToEEPROM();
-int isAndroidThere();
+void writeAndroidFlag (uint8_t flag);
+uint8_t readAndroidFlag();
+void getCommandFromEsp(uint8_t *tempBuffer);
+void requestSsidPassword(SsidPassword *ssidPass);
+int isRequestSsidPassword();
+void writeSsidPassword(SsidPassword ssidpass);
 /* Private functions ---------------------------------------------------------*/
 
 /**
@@ -140,19 +132,6 @@ int main( void )
   /******************************************************************************/
   /* Init of the Leds on X-NUCLEO-NFC02A1 board */
   NFC02A1_LED_Init( );
-  NFC02A1_LED_ON( GREEN_LED );
-  wait_ms( 500 );
-  NFC02A1_LED_ON( BLUE_LED );
-  wait_ms( 500 );
-  NFC02A1_LED_ON( ORANGE_LED );
-  wait_ms( 500 );
-  NFC02A1_LED_OFF( GREEN_LED );
-  wait_ms( 500 );
-  NFC02A1_LED_OFF( BLUE_LED );
-  wait_ms( 500 );
-  NFC02A1_LED_OFF( ORANGE_LED );
-
-
 
   /* Enable Energy Harvesting */
   Enable_EnergyHarvesting();
@@ -170,18 +149,10 @@ int main( void )
   /* Set the LED2 on to indicate Init done */
   NFC02A1_LED_ON( BLUE_LED );
 
-  /*MOCK*/
-  Buffer_bin[0] = 0x0;	//set the ANDROID_PRESENT bit
-  Buffer_bin[1] = 0;
-  Buffer_bin[6] = 0;
-
-  //while(BSP_NFCTAG_WriteData((Buffer_bin), (0), 7)!=NDEF_OK);	//clear everything
-  //BSP_NFCTAG_ReadData(NDEF_BUFFER1, 0, 8);
-  ReadWifiFromSpiComplete = 0;
-  	  androidNeedSSIDPW = 0;
+  NDEF_BUFFER1[0] = 0;
+  BSP_NFCTAG_WriteData(NDEF_BUFFER1, 0, 2 );
   while( 1 )
   {
-
 	 espComm();
 	 androidComm();
   }
@@ -200,18 +171,15 @@ int main( void )
 void espComm(){
 	switch(espComState){
 		case IDLE:
-			while((tempBuffer== 0xff ) || (tempBuffer == 0x52)){
-				while(__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET);
-				HAL_SPI_Receive(&hspi1, &tempBuffer, 1, 5000);
-			}
+			getCommandFromEsp(&espCommand);
 			volatile int h;
 			h++;
-			if(tempBuffer == NEED_WIFI && androidNeedSSIDPW == 1){
-				androidNeedSSIDPW = 0;
+			if(espCommand == NEED_WIFI && ssidPassStatus == REQUEST_SSID_PASS){
+				ssidPassStatus = SSID_STATUS_IDLE;
 				needWifiSPI();
 				espComState = READ_WIFI_SPI;
 			}
-			else if(tempBuffer == NEED_WIFI && androidNeedSSIDPW == 0){
+			else if(espCommand == NEED_WIFI && ssidPassStatus == SSID_STATUS_IDLE){
 				xneedWifiSPI();
 			}
 			else{
@@ -219,9 +187,8 @@ void espComm(){
 			}
 			break;
 		case READ_WIFI_SPI:
-			Wifissid = receiveWifiSSID();
-			WifiPw = receiveWifiPw();
-			ReadWifiFromSpiComplete = 1;
+			requestSsidPassword(&ssidPass);
+			ssidPassStatus = SSID_PASS_AVAILABLE;	//SsidPassStatus = SSID_PASS_AVAILABLE
 			espComState = IDLE;
 			volatile int i = 0;
 			i++;
@@ -229,55 +196,71 @@ void espComm(){
 	}
 }
 
+
+
 void androidComm(){
 	switch(androidComState){
 	case CHECK_ANDROID_THERE:
-		if(isAndroidThere() == 0){
-			androidNeedSSIDPW = 1;
+		if(isRequestSsidPassword() == 1){
+			ssidPassStatus = REQUEST_SSID_PASS;	//SsidPassStatus = REQUEST_SSID_PASS
 			androidComState = WRITE_WIFI_EEPROM;
 		}
 		else{
-			androidNeedSSIDPW = 0;
+			ssidPassStatus = SSID_STATUS_IDLE;	//SsidPassStatus = IDLE
 		}
 		break;
 	case WRITE_WIFI_EEPROM:
-		if(ReadWifiFromSpiComplete == 1){
-			volatile int i;
-			i++;
-			ReadWifiFromSpiComplete = 0;
+		if(ssidPassStatus == SSID_PASS_AVAILABLE){	//SsidPassStatus == SSID_PASS_AVAILABLE
+			ssidPassStatus = SSID_STATUS_IDLE;	//SsidPassStatus = IDLE
 
 			//BSP_NFCTAG_WriteData(Wifissid, SSID_8_BUFFER_POS, 8);
 			//BSP_NFCTAG_WriteData(WifiPw, PW_8_BUFFER_POS, 8);
 			//BSP_NFCTAG_ReadData(NDEF_BUFFER1, 0, 1);
-			//tempFlag = NDEF_BUFFER1[0] | ANDROID_WRCPLT;	//set wrcplt bit
-			tempFlag = 3;
-			//while(BSP_NFCTAG_WriteData((&tempFlag), (6), 1)!=NDEF_OK);
+			//tempFlag = NDEF_BUFFER1[0] | ANDROID_WRCPLT;	//set wrcplt bit	//writeSsidPassword()
+			writeSsidPassword(ssidPass);
+			writeAndroidFlag(SSIDPASS_PRESENT);
+			/*tempFlag = 3;
+			//while(BSP_NFCTAG_WriteData((&tempFlag), (6), 1)!=NDEF_OK);*/
 			androidComState = CHECK_ANDROID_THERE;
 		}
-
 		break;
 	}
 
 }
 
-uint8_t readAndroidThereNFC(){
-	return 0xf;
+void getCommandFromEsp(uint8_t *tempBuffer){
+	while((*tempBuffer== 0xff ) || (*tempBuffer == 0x0)){
+		while(__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET);
+		HAL_SPI_Receive(&hspi1, tempBuffer, 1, 5000);
+	}
+}
+void requestSsidPassword(SsidPassword *ssidPass){
+	ssidPass->Wifissid = receiveWifiSSID();	//requestSsidPassword
+	ssidPass->WifiPw = receiveWifiPw();		//requestSsidPassword
+
+	volatile int l;
+	l++;
 }
 
-int isAndroidThere(){
+int isRequestSsidPassword(){
 	/*using push button to stimulate the response*/
-	return (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
+	//return (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
 
-	//poll for AndroidThere flag
-	//clear the changing flag
-	//copy ssid and pw to eeprom
-	//set WriteCPLT flag
-	BSP_NFCTAG_ReadData(NDEF_BUFFER1, 0, 1 );
-	if((NDEF_BUFFER1[0] & ANDROID_PRESENT) > 0){
-		//BIT IS SET
+
+	//BSP_NFCTAG_ReadData(NDEF_BUFFER1, 0, 1 );
+	if(readAndroidFlag() == ANDROID_REQUESTING){
+		writeAndroidFlag(SSIDPASS_NOT_PRESENT);
+		//NDEF_BUFFER[0] = SSIDPASS_NOT_PRESENT;
+		//BSP_NFCTAG_WriteData(NDEF_BUFFER1, 0, 1 );
 		return 1;
 	}
 	return 0;
+
+}
+
+void writeSsidPassword(SsidPassword ssidpass){
+	BSP_NFCTAG_WriteData(ssidpass.Wifissid, 4, 8);
+	BSP_NFCTAG_WriteData(ssidpass.WifiPw, 12, 8);
 
 }
 void needWifiSPI(){
@@ -309,11 +292,12 @@ uint8_t* receiveWifiPw(){
 	j++;
 	return WifiPw;
 }
-void WriteSsidToEEPROM(uint8_t* Ssid){
+void writeAndroidFlag (uint8_t flag){
+	BSP_NFCTAG_WriteData(&flag, 0, 1 );
 }
-void WritePwToEEPROM(uint8_t* Pw){
-}
-void WriteAndroidConfirmationToEEPROM(){
+uint8_t readAndroidFlag(){
+	BSP_NFCTAG_ReadData(NDEF_BUFFER1, 0, 1 );
+	return NDEF_BUFFER1[0];
 }
 
 static void MX_SPI1_Init(void)
