@@ -153,6 +153,15 @@ int main( void )
   BSP_NFCTAG_WriteData(NDEF_BUFFER1, 0, 2 );
   while( 1 )
   {
+	  /**SPI1 GPIO Configuration
+	    PA5     ------> SPI1_SCK   ---->  d5
+	    PA6     ------> SPI1_MISO  ---->  d6
+	    PA7     ------> SPI1_MOSI  ---->  d7
+
+	    blue - 	sck
+	    green - miso
+	    red   - mosi
+	  */
 	 espComm();
 	 androidComm();
   }
